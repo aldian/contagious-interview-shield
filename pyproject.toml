@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "contagious-interview-shield"
+version = "0.1.0"
+description = "Zero-execution static security scanner for Git hooks, VS Code auto-tasks, recruiter emails, Notion archives, and Contagious Interview / BeaverTail / EtherHider malware."
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.9"
+authors = [
+  {name = "Aldian Fazrihady", email = "security@aldianfazrihady.com"},
+]
+keywords = [
+  "security",
+  "malware-analysis",
+  "contagious-interview",
+  "beavertail",
+  "git-hooks",
+  "vscode-tasks",
+  "supply-chain-security",
+  "threat-intelligence",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Information Technology",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Topic :: Security",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://www.aldianfazrihady.com/en-us/tools/safety-scanner/"
+Repository = "https://github.com/aldian/contagious-interview-shield"
+Issues = "https://github.com/aldian/contagious-interview-shield/issues"
+
+[project.scripts]
+contagious-shield = "contagious_shield.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["contagious_shield*"]
