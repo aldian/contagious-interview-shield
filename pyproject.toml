@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "contagious-interview-shield"
-version = "0.1.0"
-description = "Zero-execution static security scanner for Git hooks, VS Code auto-tasks, recruiter emails, Notion archives, and Contagious Interview / BeaverTail / EtherHider malware."
+version = "0.2.0"
+description = "Zero-execution static security scanner for Git hooks, VS Code auto-tasks, PowerShell .dat droppers, recruiter emails, Notion archives, and Contagious Interview / BeaverTail / crypto-clipper malware."
 readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.9"

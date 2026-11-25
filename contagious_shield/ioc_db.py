@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Verified Threat Intelligence IOCs for Contagious Interview campaigns."""
+"""Verified Threat Intelligence IOCs for Contagious Interview and poisoned freelance/contest campaigns."""
 
 from typing import Dict
 
@@ -55,6 +55,8 @@ KNOWN_MALICIOUS_EMAILS: Dict[str, str] = {
     "neverdreamagain9106@gmail.com": "Git commit email (+0900 UTC+9) linked to BladeCKG / Jio.",
     "tosky929@gmail.com": "Git commit email linked to skydev929 resume-tailor factory.",
     "mitsuomori0318@gmail.com": "Git commit email (+0900 UTC+9) linked to AppleSeed0318.",
+    "nataphongnakorn11@outlook.com": "Git commit email (-0500 EST) used across nataphong-lab/Open-Source-Face-Recognition-Ultimate Windows PowerShell/.dat crypto-clipper commits (Freelancer #2804892 operator, separate from DPRK Contagious Interview).",
+    "nataphong-lab@gmail.com": "Contact email published in nataphong-lab/Open-Source-Face-Recognition-Ultimate README.md distributing an AES-encrypted PowerShell/.dat crypto-clipper.",
 }
 
 KNOWN_MALICIOUS_GITHUB_ACTORS: Dict[str, str] = {
@@ -77,12 +79,15 @@ KNOWN_MALICIOUS_GITHUB_ACTORS: Dict[str, str] = {
     "superdev348": "ID 77982379 (+0900 UTC+9): 348-suffix sockpuppet ring.",
     "corasphinx": "ID 82669989 (+0900 UTC+9): CriticalRiver / FinCoPilot data leak operator.",
     "hexzilla": "ID 75077277 (+0900 UTC+9): GitHub DMCA leak filing 2025-03-19-litegix.md.",
+    "nataphong-lab": "Created 2025-04-18 (1 follower, 1 repo, 742+ fake stars): distributes Windows PowerShell/.dat AES-256-CBC PyInstaller crypto clipboard hijacker via Freelancer contest #2804892 (aaront71).",
 }
 
 KNOWN_MALICIOUS_INFRA: Dict[str, str] = {
     "84.200.33.163": "UltaHost / First Colo Frankfurt Stage 1 & 2 malware staging server (/302/302m, 302l, 302w, tokenlinux.sh, parser.js).",
     "104.234.94.198": "Stage 4/5 BeaverTail / InvisibleFerret C2 server (port 1144, campaign 30621346).",
     "107.182.130.226": "Fallback Stage 4/5 BeaverTail / InvisibleFerret C2 server (port 1144, campaign 30621346).",
+    "213.173.111.184": "nataphong-lab Windows crypto-clipper C2 server (port 25642, /api/clipboard-ok & /api/clipboard-job/*/status) generating lookalike vanity wallet addresses.",
+    "storageplatformdiagnosticslab": "Windows staging directory (%LOCALAPPDATA%\\StoragePlatformDiagnosticsLab) and HKCU Run autostart key created by nataphong-lab PyInstaller crypto-clipper.",
     "greaterops-f8d8b": "Firebase project ID leaked in ledgeroom.org /__/firebase/init.json.",
     "company-cc843": "Firebase hosting site ID serving ledgeroom.org.",
     "15a39da2-fd11-8179-ac80-0003c5c33f58": "Notion workspace ID hosting Skyron.zip Contagious Interview archive.",
@@ -105,6 +110,11 @@ KNOWN_MALICIOUS_SHA256: Dict[str, str] = {
     "9b92ca76ba12166be5b74c80711cd2a6d088da23bac051b9058b3cadae4130b1": "Skyron.zip — Trojanized Flask/Python blockchain assessment archive with .git/hooks/post-checkout dropper.",
     "d03934e0ff384c64bdefa941a8060586b4dad269394dbe9def32cc2cbd889846": "parser.js — Stage 3 dual-blockchain (TRON -> BSC) EtherHider resolver.",
     "5382ba7659af452590308e35cfb80bc8b65b039bd046e9edde885c16f0a83a1d": "Raw .eml spear-phishing email from Daniel Canup <career@ledgeroom.org> delivering Skyron.zip.",
+    "a7fe61e2921e2aac65c75fadb72a8994f3e7386e73c7e089f3404d41cc35a935": "install.ps1 — PowerShell dropper decrypting Advanced.dat (AES-256-CBC / PBKDF2-SHA256) and running Invoke-Expression.",
+    "68ec1e12fa8a5c11f71b7cf84e946d76093db62947928f4eec3ee381962e0080": "Advanced.dat — Encrypted PowerShell Stage 2 compiling Updated.dat & Base.dat locally with PyInstaller (--onefile --windowed).",
+    "7fe030f12518b0e9041eed0048016a382cf4687660f9ad11b103fb07242e116c": "Base.dat — Mutual-resurrection Windows persistence watchdog (UserInterrupts.exe / HKCU Run UserInterruptsLab).",
+    "f4c07d6865bbfccb11fb0f80ece4c1653d43dc8d2b812a5a3c3de6ab500bfbd0": "Updated.dat — Windows vanity crypto-address clipboard hijacker (SystemCompute.exe) reporting to 213.173.111.184:25642.",
+    "1f72c0b96b60917a137588151092b164aff22778ab1e34dc81aad761bd25aabb": "env.conf — AES-256-CBC encrypted C2 config resolving SERVER_HOST=213.173.111.184:25642.",
 }
 
 KNOWN_SIGNATURE_ANOMALIES = (

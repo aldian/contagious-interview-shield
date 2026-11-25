@@ -1,6 +1,6 @@
 # Contagious Interview Shield
 
-**Zero-execution static security scanner** to protect software engineers and technical recruiters from ***Contagious Interview* / `BeaverTail` / `InvisibleFerret` / `EtherHider`** malware disguised as coding assessments.
+**Zero-execution static security scanner** to protect software engineers and technical recruiters from ***Contagious Interview* (`BeaverTail` / `InvisibleFerret` / `EtherHider`)** and poisoned freelance/contest repository droppers (**PowerShell encrypted `.dat` loaders**, local `PyInstaller` compilers, and Windows crypto clipboard hijackers).
 
 Live free web tool: **[https://www.aldianfazrihady.com/en-us/tools/safety-scanner/](https://www.aldianfazrihady.com/en-us/tools/safety-scanner/)**
 
@@ -13,6 +13,7 @@ Fake recruiters on Hubstaff Talent, Built In, LinkedIn, Upwork, and Wellfound ar
 - **Zero-Python / Zero-IDE `.git/hooks/post-checkout` Traps (`Skyron.zip`):** A `.zip` pre-sets `.git/HEAD` to a `dev` branch where a key file was deleted, tricking candidates into running `git checkout main`. Unlike `git clone`, extracting a `.zip` preserves executable scripts in `.git/hooks/`, firing immediately when `git checkout` runs.
 - **VS Code / Cursor `folderOpen` Traps:** `.vscode/tasks.json` uses `"runOn": "folderOpen"` with long whitespace padding to hide `curl | bash` or `cmd.exe` downloaders off the horizontal scrollbar.
 - **`BeaverTail` Node.js Loaders & Blockchain Dead-Drops (`EtherHider`):** Obfuscated `errorHandler.js` (`new Function('require', ...)`), portable `Node.js` installers dropped in `~/.task/`, and C2 resolvers querying **TRON** and **BNB Smart Chain** transactions.
+- **Poisoned Contest / Fake-Starred GitHub Repos (`nataphong-lab` Windows Crypto-Clippers):** Urgent student/freelance contest repos cloned from legitimate SDKs with inflated star counts instructing victims to run `powershell -Ep Bypass ./install.ps1`, decrypt AES-256-CBC `.dat` blobs via `Invoke-Expression`, compile unsigned `PyInstaller` binaries locally, and hijack copied crypto wallet addresses.
 
 ---
 
@@ -23,15 +24,15 @@ Fake recruiters on Hubstaff Talent, Built In, LinkedIn, Upwork, and Wellfound ar
 1. **`.zip` Assessment Archives:**
    - Flags non-sample `.git/hooks/*` (`post-checkout`, `pre-commit`, `pre-push`, etc.) and `.git/HEAD` branch-switch traps.
    - Scans unstripped `.git/logs/HEAD` reflogs for `+0900` (UTC+9) commits, known operator emails, and VPS staging hostnames.
-   - Scans `.vscode/tasks.json`, `package.json`, `.github/workflows/*.yml`, `.js`, `.ts`, `.py`, `.sh`, `.cmd`, and `.bat` files.
+   - Scans `.vscode/tasks.json`, `package.json`, `.github/workflows/*.yml`, `.js`, `.ts`, `.py`, `.sh`, `.cmd`, `.bat`, `.ps1`, and `.conf` files, plus encrypted `.dat` binaries bundled with `.ps1` droppers.
 2. **`.eml` Recruiter Emails:**
    - Extracts `From`, `Reply-To`, `Return-Path`, `Message-ID` timestamps (including Dynadot epoch IDs), URLs, and attached `.zip` files.
    - Flags lure instructions (`Unzip` + `git checkout main`) and known spoofed signatures.
 3. **URLs, Domains, Notion Pages & GitHub Repos:**
    - **Notion:** Reads public workspace/page metadata and inspects attached `.zip` archives in memory without touching local disk.
-   - **GitHub:** Fetches `.vscode/tasks.json`, `package.json`, `server/errorHandler.js`, and recent commit `.patch` timezone headers (`+0900`).
+   - **GitHub:** Fetches `README.md`, root installers (`.ps1`, `.bat`, `.cmd`, `.sh`, `.conf`, `.dat`), `.vscode/tasks.json`, `package.json`, `server/errorHandler.js`, commit `.patch` timezone headers (`+0900`), and flags freshly created repos with anomalous star-count inflation (`GITHUB_FAKE_STAR_ANOMALY`).
    - **Domains:** Checks RDAP registration age and Firebase Hosting metadata (`/__/firebase/init.json`).
-4. **Threat Intel IOC Matching:** Built-in database of verified domains (`ledgeroom.org`, `astrabytesyncs.com`, `kiggla.com`, etc.), emails, GitHub accounts, C2 IPs, blockchain dead-drop wallets/txs, and file SHA-256 hashes.
+4. **Threat Intel IOC Matching:** Built-in database of verified domains (`ledgeroom.org`, `astrabytesyncs.com`, `kiggla.com`, etc.), emails, GitHub accounts (`nataphong-lab`, etc.), C2 IPs (`84.200.33.163`, `213.173.111.184`, etc.), blockchain dead-drop wallets/txs, and file SHA-256 hashes.
 
 ---
 
@@ -83,6 +84,7 @@ flowchart LR
 
 ## Latest Advisories
 
+- [2026-11-25: `nataphong-lab` (`Open-Source-Face-Recognition-Ultimate` / Freelancer `#2804892`) PowerShell `.dat` Dropper -> Local PyInstaller Crypto Clipboard Hijacker](advisories/2026-11-25-nataphong-lab-face-recognition-clipper.md)
 - [2026-11-18: Daniel Canup (`career@ledgeroom.org`) / `greaterops-f8d8b` / `Skyron.zip` `.git/hooks/post-checkout` -> TRON/BSC EtherHider Trap](advisories/2026-11-18-ledgeroom-daniel-canup-skyron-git-hooks-trap.md)
 
 ---

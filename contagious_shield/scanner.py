@@ -48,6 +48,7 @@ MAX_MEMBER_BYTES = 2 * 1024 * 1024
 MAX_TOTAL_ZIP_BYTES = 25 * 1024 * 1024
 MAX_REMOTE_ZIP_BYTES = 10 * 1024 * 1024
 MAX_REMOTE_TEXT_BYTES = 2 * 1024 * 1024
+MAX_REMOTE_DAT_BYTES = 200_000
 HTTP_TIMEOUT_SECONDS = 10
 
 SCANNABLE_TEXT_EXTS = (
@@ -71,6 +72,7 @@ SCANNABLE_TEXT_EXTS = (
     ".md",
     ".txt",
     ".env",
+    ".conf",
 )
 
 DANGEROUS_GIT_HOOKS = {
@@ -115,6 +117,41 @@ RE_RECRUITER_GIT_TRAP = re.compile(
 RE_JSONKEEPER_B64 = re.compile(
     r"aHR0cHM6Ly9(?:qc29ua2VlcGVyLmNvb|ucG9pbnQuaW8|wYWRkbGVjb25maWc)",
     re.IGNORECASE,
+)
+RE_POWERSHELL_EP_BYPASS = re.compile(
+    r"(?:powershell|pwsh)(?:\.exe)?[^\n;|]{0,120}(?:-ep|-executionpolicy)\s+bypass\b[^\n]{0,180}",
+    re.IGNORECASE,
+)
+RE_PS_DECRYPT_TOKEN = re.compile(
+    r"(?:rfc2898derivebytes|aes\]::create|aesmanaged|createdecryptor|frombase64string|readallbytes)",
+    re.IGNORECASE,
+)
+RE_PS_IEX = re.compile(
+    r"(?:invoke-expression|\biex\b\s*[\(\$\[])",
+    re.IGNORECASE,
+)
+RE_PYINSTALLER_STEALTH = re.compile(
+    r"pyinstaller[^\n]*(?:--onefile[^\n]*(?:--windowed|--noconsole)|(?:--windowed|--noconsole)[^\n]*--onefile)",
+    re.IGNORECASE,
+)
+RE_WIN_PERSIST_TOKENS = re.compile(
+    r"(?:start menu|createshortcut|wscript\.shell|localappdata|currentversion\\run|start-process)",
+    re.IGNORECASE,
+)
+RE_CLIPBOARD_API = re.compile(
+    r"(?:set_clipboard_text|setclipboarddata|openclipboard|pyperclip|set-clipboard)",
+    re.IGNORECASE,
+)
+RE_CRYPTO_HIJACK_HINT = re.compile(
+    r"(?:/api/clipboard|clipboard-ok|clipboard-job|clipboard_watcher|vanity)",
+    re.IGNORECASE,
+)
+RE_WINREG_RUN = re.compile(
+    r"software\\{1,2}microsoft\\{1,2}windows\\{1,2}currentversion\\{1,2}run",
+    re.IGNORECASE,
+)
+RE_ENV_DATA_BLOB = re.compile(
+    r"(?m)^\s*ENV_DATA=[A-Za-z0-9+/=]{120,}\s*$"
 )
 
 
@@ -209,9 +246,9 @@ class ScanAccumulator:
         )
 
         remediation = [
-            "Never open untrusted interview archives or repos in VS Code / Cursor with Workspace Trust enabled.",
-            "Inspect archives statically before running 'git checkout' or 'git commit' because .zip files preserve executable .git/hooks/* scripts.",
-            "Check your machine for hidden BeaverTail/EtherHider persistence folders: ls -la ~/.task ~/.npl",
+            "Never open untrusted interview archives or repos in VS Code / Cursor with Workspace Trust enabled, or run powershell -Ep Bypass setup scripts.",
+            "Inspect archives statically before running 'git checkout' or setup scripts because .zip files preserve executable .git/hooks/* scripts and repos may bundle encrypted .dat droppers.",
+            "Check your machine for hidden BeaverTail/EtherHider (~/.task ~/.npl) or Windows %LOCALAPPDATA% PyInstaller/HKCU Run persistence artifacts.",
         ]
         if self.iocs_matched or score >= 50:
             remediation.append(
@@ -322,7 +359,7 @@ def _safe_http_request(
     if not safe:
         return None, b"", reason
 
-    headers = {"User-Agent": "contagious-interview-shield/0.1 (+https://github.com/aldian/contagious-interview-shield)"}
+    headers = {"User-Agent": "contagious-interview-shield/0.2 (+https://github.com/aldian/contagious-interview-shield)"}
     data_bytes = None
     if json_body is not None:
         data_bytes = json.dumps(json_body).encode("utf-8")
@@ -349,6 +386,41 @@ def _safe_http_request(
             return resp.status, b"".join(chunks), ""
     except Exception as exc:
         return None, b"", str(exc)
+
+
+def _hash_and_check_ioc_bytes(
+    raw: bytes,
+    location: str,
+    acc: ScanAccumulator,
+    rule_id: str = "KNOWN_MALWARE_MEMBER_HASH",
+) -> str:
+    """Compute SHA-256 of raw bytes and record a CRITICAL finding if matched."""
+    sha256_hex = hashlib.sha256(raw).hexdigest()
+    if sha256_hex in KNOWN_MALICIOUS_SHA256:
+        note = KNOWN_MALICIOUS_SHA256[sha256_hex]
+        acc.add_ioc("sha256", sha256_hex, note)
+        acc.add_finding(
+            rule_id,
+            "CRITICAL",
+            95,
+            f"Matched Known Malware File SHA-256 ({location})",
+            location,
+            note,
+            sha256_hex,
+        )
+    return sha256_hex
+
+
+def _is_opaque_binary_dat(raw: bytes) -> bool:
+    """Return True when raw bytes look like an encrypted/opaque binary .dat payload."""
+    if len(raw) < 81:
+        return False
+    sample = raw[:4096]
+    non_printable = sum(1 for b in sample if b < 32 and b not in (9, 10, 13) or b >= 127)
+    ratio = non_printable / len(sample)
+    if sample[0] == 2 and ratio > 0.25:
+        return True
+    return ratio > 0.30
 
 
 def _scan_iocs_in_text(text: str, location: str, acc: ScanAccumulator) -> None:
@@ -588,6 +660,72 @@ def _inspect_code_patterns(text: str, location: str, acc: ScanAccumulator) -> No
             "Instructs candidates to unzip an archive and run 'git checkout main'—the exact social-engineering trigger used to fire bundled .git/hooks/post-checkout payloads.",
         )
 
+    ps_bypass_match = RE_POWERSHELL_EP_BYPASS.search(text)
+    if ps_bypass_match:
+        acc.add_finding(
+            "POWERSHELL_EP_BYPASS_LURE",
+            "HIGH",
+            65,
+            "PowerShell ExecutionPolicy Bypass Lure or Command",
+            location,
+            "Instructs execution of a script using 'powershell -Ep Bypass' (or -ExecutionPolicy Bypass), commonly used to launch unsigned Windows droppers.",
+            ps_bypass_match.group(0).strip(),
+        )
+
+    if RE_PS_IEX.search(text) and RE_PS_DECRYPT_TOKEN.search(text):
+        acc.add_finding(
+            "POWERSHELL_ENCRYPTED_PAYLOAD_IEX",
+            "CRITICAL",
+            95,
+            "PowerShell Decrypt + In-Memory Invoke-Expression Dropper",
+            location,
+            "Decrypts AES/PBKDF2 or Base64 payload bytes and executes them dynamically via Invoke-Expression / IEX.",
+        )
+
+    pyinstaller_match = RE_PYINSTALLER_STEALTH.search(text)
+    if pyinstaller_match and RE_WIN_PERSIST_TOKENS.search(text):
+        acc.add_finding(
+            "LOCAL_PYINSTALLER_STEALTH_DROPPER",
+            "CRITICAL",
+            90,
+            "Local Stealth PyInstaller Compilation + Windows Persistence Staging",
+            location,
+            "Builds hidden single-file Windows executables locally (--onefile --windowed/--noconsole) and installs them into AppData/Start Menu to evade static AV hashes.",
+            pyinstaller_match.group(0).strip(),
+        )
+
+    if RE_CLIPBOARD_API.search(text) and RE_CRYPTO_HIJACK_HINT.search(text):
+        acc.add_finding(
+            "WINDOWS_CLIPBOARD_CRYPTO_HIJACKER",
+            "CRITICAL",
+            95,
+            "Windows Clipboard Crypto-Address Hijacker (Vanity Clipper)",
+            location,
+            "Monitors/overwrites Windows clipboard contents using vanity address generation or remote /api/clipboard C2 endpoints.",
+        )
+
+    if RE_WINREG_RUN.search(text) and "create_no_window" in lower and (
+        "detached_process" in lower or "psutil" in lower
+    ):
+        acc.add_finding(
+            "WINDOWS_WATCHDOG_PERSISTENCE",
+            "HIGH",
+            75,
+            "Hidden Windows HKCU Run Persistence & Watchdog Relaunch",
+            location,
+            "Registers CurrentVersion\\Run logon persistence alongside detached/no-window process resurrection logic.",
+        )
+
+    if RE_ENV_DATA_BLOB.search(text):
+        acc.add_finding(
+            "ENCRYPTED_ENV_CONF_BLOB",
+            "MEDIUM",
+            35,
+            "Opaque Encrypted ENV_DATA Configuration Blob",
+            location,
+            "Contains a long opaque ENV_DATA=... ciphertext blob instead of readable environment keys (used to conceal C2 host/port details).",
+        )
+
 
 def _scan_text_block(text: str, location: str, acc: ScanAccumulator, inspect_as_json_path: str = "") -> None:
     """Run IOC, config, and code pattern detectors across a text buffer."""
@@ -664,6 +802,8 @@ def scan_zip_bytes(raw_bytes: bytes, filename: str = "archive.zip") -> Dict[str,
     total_read = 0
     git_head_ref = ""
     has_git_dir = False
+    has_ps1 = False
+    opaque_dat_files: List[str] = []
 
     for info in infos[:MAX_ZIP_MEMBERS]:
         if info.is_dir():
@@ -681,7 +821,12 @@ def scan_zip_bytes(raw_bytes: bytes, filename: str = "archive.zip") -> Dict[str,
         is_git_log = "/.git/logs/" in f"/{lower_name}" or lower_name.startswith(".git/logs/")
         is_git_cfg = lower_name.endswith("/.git/config") or lower_name == ".git/config"
         is_vscode = "/.vscode/" in f"/{lower_name}" or lower_name.startswith(".vscode/")
-        should_read = bool(hook_match or is_git_head or is_git_log or is_git_cfg or is_vscode or lower_name.endswith(SCANNABLE_TEXT_EXTS))
+        is_dat = lower_name.endswith(".dat")
+        if lower_name.endswith(".ps1"):
+            has_ps1 = True
+        should_read = bool(
+            hook_match or is_git_head or is_git_log or is_git_cfg or is_vscode or is_dat or lower_name.endswith(SCANNABLE_TEXT_EXTS)
+        )
         if not should_read:
             continue
 
@@ -693,6 +838,13 @@ def scan_zip_bytes(raw_bytes: bytes, filename: str = "archive.zip") -> Dict[str,
             with zf.open(info, "r") as fh:
                 member_bytes = fh.read(to_read + 1)
             total_read += len(member_bytes)
+
+        if member_bytes:
+            _hash_and_check_ioc_bytes(member_bytes, norm_name, acc)
+
+        if is_dat and _is_opaque_binary_dat(member_bytes):
+            opaque_dat_files.append(norm_name)
+            continue
 
         member_text = _safe_decode(member_bytes)
 
@@ -729,6 +881,16 @@ def scan_zip_bytes(raw_bytes: bytes, filename: str = "archive.zip") -> Dict[str,
             continue
 
         _scan_text_block(member_text, norm_name, acc, inspect_as_json_path=norm_name)
+
+    if has_ps1 and opaque_dat_files:
+        acc.add_finding(
+            "BUNDLED_PS1_AND_DAT_PAYLOADS",
+            "HIGH",
+            55,
+            "PowerShell Installer Bundled With Opaque Encrypted .dat Payloads",
+            ", ".join(opaque_dat_files[:5]),
+            "Archive combines Windows .ps1 setup script(s) with encrypted/opaque binary .dat payload files.",
+        )
 
     if git_head_ref and any(
         b in git_head_ref.lower() for b in ("refs/heads/dev", "refs/heads/staging", "refs/heads/feature")
@@ -948,23 +1110,133 @@ def _inspect_github_url(url: str, acc: ScanAccumulator) -> None:
     repo = repo[:-4] if repo.endswith(".git") else repo
     st_r, repo_raw, _ = _safe_http_request(f"https://api.github.com/repos/{owner}/{repo}")
     default_branch = "main"
+    repo_stars = 0
+    repo_age_days: Optional[int] = None
     if st_r == 200 and repo_raw:
         try:
             rdata = json.loads(repo_raw.decode("utf-8", errors="replace"))
             default_branch = rdata.get("default_branch") or "main"
+            repo_stars = int(rdata.get("stargazers_count") or 0)
+            created_str = str(rdata.get("created_at") or "")
+            if created_str:
+                created_dt = datetime.datetime.fromisoformat(created_str.replace("Z", "+00:00"))
+                repo_age_days = (datetime.datetime.now(datetime.timezone.utc) - created_dt).days
             acc.metadata["github_repo"] = {
                 "full_name": rdata.get("full_name"),
                 "created_at": rdata.get("created_at"),
                 "default_branch": default_branch,
+                "stargazers_count": repo_stars,
+                "forks_count": int(rdata.get("forks_count") or 0),
+                "repo_age_days": repo_age_days,
             }
         except Exception:
             pass
 
-    for path in (".vscode/tasks.json", "package.json", "server/errorHandler.js", "errorHandler.js"):
+    st_u, user_raw, _ = _safe_http_request(f"https://api.github.com/users/{owner}")
+    if st_u == 200 and user_raw:
+        try:
+            udata = json.loads(user_raw.decode("utf-8", errors="replace"))
+            followers = int(udata.get("followers") or 0)
+            public_repos = int(udata.get("public_repos") or 0)
+            acc.metadata["github_owner"] = {
+                "login": udata.get("login"),
+                "created_at": udata.get("created_at"),
+                "followers": followers,
+                "public_repos": public_repos,
+            }
+            if repo_stars >= 100 and repo_age_days is not None and repo_age_days <= 30 and followers <= 5 and public_repos <= 2:
+                acc.add_finding(
+                    "GITHUB_FAKE_STAR_ANOMALY",
+                    "HIGH",
+                    50,
+                    f"Artificially Inflated GitHub Stars ({repo_stars} Stars in {repo_age_days} Days)",
+                    f"{owner}/{repo}",
+                    f"Repository is {repo_age_days} days old with {repo_stars} stars on an account with {followers} follower(s) and {public_repos} public repo(s)—a common credibility-spoofing indicator.",
+                )
+        except Exception:
+            pass
+
+    probe_paths: List[str] = [
+        ".vscode/tasks.json",
+        "package.json",
+        "server/errorHandler.js",
+        "errorHandler.js",
+        "README.md",
+        "install.ps1",
+        "setup.ps1",
+        "install.sh",
+        "setup.sh",
+        "env.conf",
+    ]
+    root_dat_files: List[Tuple[str, int]] = []
+    root_has_ps1 = False
+    readme_lower_fallback = True
+
+    st_root, root_raw, _ = _safe_http_request(f"https://api.github.com/repos/{owner}/{repo}/contents")
+    if st_root == 200 and root_raw:
+        try:
+            entries = json.loads(root_raw.decode("utf-8", errors="replace"))
+            if isinstance(entries, list):
+                extra_scripts = 0
+                for ent in entries:
+                    if ent.get("type") != "file":
+                        continue
+                    fname = str(ent.get("name") or "")
+                    fsize = int(ent.get("size") or 0)
+                    fl = fname.lower()
+                    if fl == "readme.md" and fname != "README.md":
+                        probe_paths.append(fname)
+                        readme_lower_fallback = False
+                    elif fl == "readme.md":
+                        readme_lower_fallback = False
+                    if fl.endswith(".ps1"):
+                        root_has_ps1 = True
+                    if fl.endswith((".ps1", ".bat", ".cmd", ".conf")) and fname not in probe_paths and extra_scripts < 5:
+                        probe_paths.append(fname)
+                        extra_scripts += 1
+                    elif fl.endswith(".dat") and len(root_dat_files) < 5:
+                        root_dat_files.append((fname, fsize))
+        except Exception:
+            pass
+
+    if readme_lower_fallback:
+        probe_paths.append("readme.md")
+
+    seen_paths: Set[str] = set()
+    for path in probe_paths:
+        if path in seen_paths:
+            continue
+        seen_paths.add(path)
         raw_url = f"https://raw.githubusercontent.com/{owner}/{repo}/{default_branch}/{path}"
         st_f, body_bytes, _ = _safe_http_request(raw_url)
         if st_f == 200 and body_bytes:
-            _scan_text_block(_safe_decode(body_bytes), f"{owner}/{repo}/{path}", acc, inspect_as_json_path=path)
+            loc = f"{owner}/{repo}/{path}"
+            if path.lower().endswith(".ps1"):
+                root_has_ps1 = True
+            _hash_and_check_ioc_bytes(body_bytes, loc, acc)
+            _scan_text_block(_safe_decode(body_bytes), loc, acc, inspect_as_json_path=path)
+
+    opaque_root_dats: List[str] = []
+    for dat_name, dat_size in root_dat_files:
+        if dat_size > MAX_REMOTE_DAT_BYTES:
+            continue
+        raw_url = f"https://raw.githubusercontent.com/{owner}/{repo}/{default_branch}/{dat_name}"
+        st_d, dat_bytes, _ = _safe_http_request(raw_url, max_bytes=MAX_REMOTE_DAT_BYTES + 1)
+        if st_d == 200 and dat_bytes:
+            loc = f"{owner}/{repo}/{dat_name}"
+            _hash_and_check_ioc_bytes(dat_bytes, loc, acc)
+            if _is_opaque_binary_dat(dat_bytes):
+                opaque_root_dats.append(dat_name)
+
+    if root_has_ps1 and opaque_root_dats:
+        acc.add_finding(
+            "GITHUB_PS1_WITH_OPAQUE_DAT_PAYLOAD",
+            "HIGH",
+            60,
+            "GitHub Repo Bundles PowerShell Installer With Opaque .dat Payloads",
+            f"{owner}/{repo}",
+            f"Root directory pairs PowerShell script(s) with opaque/encrypted .dat payload file(s): {', '.join(opaque_root_dats)}.",
+        )
 
     st_c, commits_raw, _ = _safe_http_request(f"https://api.github.com/repos/{owner}/{repo}/commits?per_page=5")
     if st_c == 200 and commits_raw:
@@ -974,6 +1246,9 @@ def _inspect_github_url(url: str, acc: ScanAccumulator) -> None:
             commits = []
         for item in commits[:3]:
             sha = item.get("sha", "")
+            author_email = ((item.get("commit") or {}).get("author") or {}).get("email") or ""
+            if author_email:
+                _scan_iocs_in_text(author_email, f"{owner}/{repo}@{(sha or 'head')[:10]}", acc)
             if not sha:
                 continue
             st_p, patch_bytes, _ = _safe_http_request(f"https://github.com/{owner}/{repo}/commit/{sha}.patch")

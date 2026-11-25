@@ -110,6 +110,75 @@ class ScannerUnitTests(unittest.TestCase):
         self.assertIn("BEAVERTAIL_BASE64_DEAD_DROP_URL", rule_ids)
         self.assertIn("ETHERHIDER_TRON_BSC_RESOLVER", rule_ids)
 
+    def test_detects_powershell_dat_dropper_zip_and_env_conf(self):
+        raw_zip = _build_zip({
+            "sdk/README.md": "Setup:\npowershell -Ep Bypass ./install.ps1\nContact: nataphong-lab@gmail.com\n",
+            "sdk/install.ps1": (
+                "$raw = [System.IO.File]::ReadAllBytes($dat)\n"
+                "$k = New-Object System.Security.Cryptography.Rfc2898DeriveBytes($p, $s, 50000)\n"
+                "$aes = [System.Security.Cryptography.Aes]::Create()\n"
+                "Invoke-Expression ([System.Text.Encoding]::UTF8.GetString($plain))\n"
+            ),
+            "sdk/Advanced.dat": b"\x02" + (b"\x99\xaa\x01\xfe" * 32),
+            "sdk/env.conf": "ENV_DATA=" + ("A" * 160) + "\n",
+        })
+        res = scan_zip_bytes(raw_zip, filename="face-sdk.zip")
+        self.assertEqual(res["verdict"], "CRITICAL_MALWARE_TRAP")
+        self.assertGreaterEqual(res["risk_score"], 95)
+        rule_ids = {f["rule_id"] for f in res["findings"]}
+        self.assertIn("POWERSHELL_EP_BYPASS_LURE", rule_ids)
+        self.assertIn("POWERSHELL_ENCRYPTED_PAYLOAD_IEX", rule_ids)
+        self.assertIn("BUNDLED_PS1_AND_DAT_PAYLOADS", rule_ids)
+        self.assertIn("ENCRYPTED_ENV_CONF_BLOB", rule_ids)
+        ioc_vals = {i["value"] for i in res["iocs_matched"]}
+        self.assertIn("nataphong-lab@gmail.com", ioc_vals)
+
+    def test_detects_pyinstaller_clipper_watchdog_and_iocs(self):
+        ps_dropper = (
+            "& $python -m PyInstaller --noconfirm --onefile --windowed --name SystemCompute Updated.py\n"
+            "Copy-Item $target (Join-Path $env:LOCALAPPDATA 'StoragePlatformDiagnosticsLab')\n"
+            "$s = $shell.CreateShortcut($link)\n"
+        )
+        res_ps = scan_text_or_code(ps_dropper, source_name="Advanced.dat")
+        self.assertEqual(res_ps["verdict"], "CRITICAL_MALWARE_TRAP")
+        self.assertIn("LOCAL_PYINSTALLER_STEALTH_DROPPER", {f["rule_id"] for f in res_ps["findings"]})
+
+        py_clipper = (
+            "SERVER_URL = 'http://213.173.111.184:25642/api/clipboard-ok'\n"
+            "def watch(): set_clipboard_text(body['vanity'])\n"
+            "key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'Software\\Microsoft\\Windows\\CurrentVersion\\Run')\n"
+            "flags = subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS\n"
+        )
+        res_py = scan_text_or_code(py_clipper, source_name="Updated.py")
+        self.assertEqual(res_py["verdict"], "CRITICAL_MALWARE_TRAP")
+        py_rules = {f["rule_id"] for f in res_py["findings"]}
+        self.assertIn("WINDOWS_CLIPBOARD_CRYPTO_HIJACKER", py_rules)
+        self.assertIn("WINDOWS_WATCHDOG_PERSISTENCE", py_rules)
+        self.assertIn("213.173.111.184", {i["value"] for i in res_py["iocs_matched"]})
+
+    def test_nataphong_lab_sha256_and_actor_iocs_match(self):
+        text = (
+            "Repo: https://github.com/nataphong-lab/Open-Source-Face-Recognition-Ultimate\n"
+            "Author: nataphongnakorn11@outlook.com\n"
+            "SHA256: a7fe61e2921e2aac65c75fadb72a8994f3e7386e73c7e089f3404d41cc35a935\n"
+        )
+        res = scan_text_or_code(text, source_name="report.txt")
+        self.assertEqual(res["verdict"], "CRITICAL_MALWARE_TRAP")
+        ioc_vals = {i["value"] for i in res["iocs_matched"]}
+        self.assertIn("nataphong-lab", ioc_vals)
+        self.assertIn("nataphongnakorn11@outlook.com", ioc_vals)
+        self.assertIn("a7fe61e2921e2aac65c75fadb72a8994f3e7386e73c7e089f3404d41cc35a935", ioc_vals)
+
+    def test_benign_powershell_and_python_zip_is_safe(self):
+        raw_zip = _build_zip({
+            "project/README.md": "# Clean SDK\nRun `powershell -File ./setup.ps1`.\n",
+            "project/setup.ps1": "python -m venv .venv\npip install -r requirements.txt\n",
+            "project/run.py": "print('hello world')\n",
+        })
+        res = scan_zip_bytes(raw_zip, filename="clean-win.zip")
+        self.assertEqual(res["verdict"], "SAFE")
+        self.assertEqual(res["risk_score"], 0)
+
     def test_detects_ledgeroom_eml_lure_without_network(self):
         eml_raw = (
             b"From: Daniel Canup <career@ledgeroom.org>\r\n"
